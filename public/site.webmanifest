@@ -1,0 +1,9 @@
+{
+  "name": "ReelVault",
+  "short_name": "ReelVault",
+  "description": "Instagram Reel Downloader - Download Public Reels",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070707",
+  "theme_color": "#E5092F"
+}

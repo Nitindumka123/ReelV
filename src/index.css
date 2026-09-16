@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #070707;
+  --color-secondary-background: #0D0D0D;
+  --color-surface: #121212;
+  --color-primary-red: #E5092F;
+  --color-bright-red: #FF1744;
+  --color-secondary-text: #A7A7A7;
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-white antialiased selection:bg-primary-red selection:text-white;
+    font-family: var(--font-sans);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+@layer utilities {
+  .red-glow {
+    box-shadow: 0 0 40px -10px rgba(229, 9, 47, 0.15);
+  }
+  
+  .red-glow-strong {
+    box-shadow: 0 0 60px -5px rgba(229, 9, 47, 0.25);
+  }
+
+  .text-gradient-red {
+    @apply bg-linear-to-r from-primary-red to-bright-red bg-clip-text text-transparent;
+  }
+}

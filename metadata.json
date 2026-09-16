@@ -1,0 +1,6 @@
+{
+  "name": "ReelVault",
+  "description": "Premium Instagram media downloader for Reels, Stories, and Highlights. Fast, simple, and high-quality.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
