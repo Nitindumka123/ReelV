@@ -1,10 +1,11 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import fs from "fs";
+import { spawn, ChildProcess } from "child_process";
 import cors from "cors";
 import helmet from "helmet";
 import { Transform, Readable } from "stream";
-import { spawn, ChildProcess } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { UrlService } from "./src/server/services/urlService";
 import { SecurityService } from "./src/server/services/securityService";
@@ -14,49 +15,67 @@ import { DownloadTokenService } from "./src/server/services/downloadTokenService
 import { logger } from "./src/server/utils/logger";
 import { ResolveResponse, ErrorCode } from "./src/types";
 
-// Start FastAPI Backend if running locally
-let pythonProcess: ChildProcess | null = null;
-const extractorUrlStr = process.env.EXTRACTOR_URL || "http://127.0.0.1:8000";
-let isLocalExtractor = false;
-let extractorPort = 8000;
-
-try {
-  const parsed = new URL(extractorUrlStr);
-  isLocalExtractor = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-  if (parsed.port) {
-    extractorPort = parseInt(parsed.port, 10);
-  }
-} catch {
-  isLocalExtractor = true;
-  extractorPort = 8000;
-}
-
-if (isLocalExtractor) {
-  pythonProcess = spawn("python3", [
-    "-m",
-    "uvicorn",
-    "fastapi_app:app",
-    "--port",
-    String(extractorPort),
-    "--host",
-    "127.0.0.1"
-  ], {
-    env: {
-      ...process.env,
-      PORT: String(extractorPort),
-      EXTRACTOR_MAX_CONCURRENCY: process.env.EXTRACTOR_MAX_CONCURRENCY || "2"
-    }
-  });
-  pythonProcess.stdout?.on("data", (data) => console.log(`FastAPI: ${data}`));
-  pythonProcess.stderr?.on("data", (data) => console.error(`FastAPI Error: ${data}`));
-}
-
 function getClientIp(req: express.Request): string {
   const cf = req.headers['cf-connecting-ip'];
-  if (typeof cf === 'string' && cf.trim()) return cf.trim();
+  if (typeof cf === 'string' && /^[0-9a-fA-F:.]+$/.test(cf.trim())) return cf.trim();
   const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff.trim()) return xff.split(',')[0].trim();
-  return req.ip || req.socket.remoteAddress || 'unknown';
+  if (typeof xff === 'string') {
+    const candidate = xff.split(',')[0].trim();
+    if (/^[0-9a-fA-F:.]+$/.test(candidate)) return candidate;
+  }
+  return req.ip || req.socket.remoteAddress || '127.0.0.1';
+}
+
+let extractorProcess: ChildProcess | null = null;
+
+function startExtractorCompanion() {
+  const extractorUrl = process.env.EXTRACTOR_URL || "http://127.0.0.1:8000";
+  if (extractorUrl.includes("127.0.0.1") || extractorUrl.includes("localhost")) {
+    const pyScript = path.join(process.cwd(), "extractor_service.py");
+    if (fs.existsSync(pyScript)) {
+      try {
+        extractorProcess = spawn("python3", [pyScript], {
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            EXTRACTOR_HOST: "127.0.0.1",
+            EXTRACTOR_PORT: "8000"
+          }
+        });
+
+        extractorProcess.on("error", (err) => {
+          logger.warn({
+            requestId: "system",
+            timestamp: new Date().toISOString(),
+            endpoint: "extractor-companion",
+            errorCode: "EXTRACTOR_SPAWN_ERROR",
+            message: `Companion extractor process: ${err.message}`
+          });
+        });
+
+        extractorProcess.on("exit", () => {
+          extractorProcess = null;
+        });
+      } catch (e: any) {
+        logger.warn({
+          requestId: "system",
+          timestamp: new Date().toISOString(),
+          endpoint: "extractor-companion",
+          errorCode: "EXTRACTOR_SPAWN_FAILED",
+          message: e.message
+        });
+      }
+    }
+  }
+}
+
+function cleanupExtractor() {
+  if (extractorProcess && !extractorProcess.killed) {
+    try {
+      extractorProcess.kill("SIGTERM");
+    } catch {}
+    extractorProcess = null;
+  }
 }
 
 class StreamSizeLimitTransform extends Transform {
@@ -133,6 +152,14 @@ async function startServer() {
     credentials: true
   }));
 
+  // SEO: Never index internal APIs or health checks
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health' || req.path === '/ready') {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+    }
+    next();
+  });
+
   // Liveness Probe
   app.get("/health", (req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -140,19 +167,36 @@ async function startServer() {
   });
 
   // Readiness Probe (verifies extractor backend connectivity)
-  app.get("/ready", async (req, res) => {
+  app.get(["/ready", "/api/ready"], async (req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     try {
-      const extractorHealthUrl = process.env.EXTRACTOR_HEALTH_URL || 'http://127.0.0.1:8000/health';
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-      const resp = await fetch(extractorHealthUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-      
-      if (resp.ok) {
-        return res.json({ status: "ready", provider: "ok", uptime: process.uptime() });
+      const extractorHealthUrl = process.env.EXTRACTOR_HEALTH_URL || 
+        (process.env.EXTRACTOR_URL ? (process.env.EXTRACTOR_URL.endsWith('/extract') ? process.env.EXTRACTOR_URL.replace(/\/extract$/, '/health') : process.env.EXTRACTOR_URL.replace(/\/+$/, '') + '/health') : 'http://127.0.0.1:8000/health');
+
+      let externalHealthy = false;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        const resp = await fetch(extractorHealthUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (resp.ok) externalHealthy = true;
+      } catch {}
+
+      if (externalHealthy) {
+        return res.json({ status: "ready", provider: "python-ytdlp", uptime: process.uptime() });
       }
-      return res.status(503).json({ status: "degraded", provider: "unhealthy", uptime: process.uptime() });
+
+      // Check local yt-dlp binary fallback
+      const hasLocalBinary = fs.existsSync(path.join(process.cwd(), 'yt-dlp-bin'));
+      if (hasLocalBinary) {
+        return res.json({ status: "ready", provider: "ytdlp-cli", uptime: process.uptime() });
+      }
+
+      if (process.env.RAPIDAPI_KEY) {
+        return res.json({ status: "ready", provider: "rapidapi", uptime: process.uptime() });
+      }
+
+      return res.status(503).json({ status: "degraded", provider: "unreachable", uptime: process.uptime() });
     } catch {
       return res.status(503).json({ status: "degraded", provider: "unreachable", uptime: process.uptime() });
     }
@@ -165,9 +209,26 @@ async function startServer() {
 
   app.get("/api/health/provider", async (req, res) => {
     try {
-      const extractorHealthUrl = process.env.EXTRACTOR_HEALTH_URL || 'http://127.0.0.1:8000/health';
-      const response = await fetch(extractorHealthUrl);
-      res.json({ configured: true, available: response.ok });
+      const extractorHealthUrl = process.env.EXTRACTOR_HEALTH_URL || "http://127.0.0.1:8000/health";
+      let isUp = false;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2000);
+        const response = await fetch(extractorHealthUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        isUp = response.ok;
+      } catch {}
+
+      if (isUp) {
+        return res.json({ configured: true, available: true, provider: "python-ytdlp" });
+      }
+
+      const hasLocalBinary = fs.existsSync(path.join(process.cwd(), 'yt-dlp-bin'));
+      if (hasLocalBinary) {
+        return res.json({ configured: true, available: true, provider: "ytdlp-cli" });
+      }
+
+      return res.json({ configured: true, available: false, provider: "unreachable" });
     } catch {
       res.json({ configured: true, available: false });
     }
@@ -248,7 +309,7 @@ async function startServer() {
       // 4. SSRF Protection
       const isSafe = await SecurityService.validateForSSRF(normalizedUrl);
       if (!isSafe) {
-        logger.error({
+        logger.warn({
           requestId,
           timestamp: new Date().toISOString(),
           endpoint: "/api/resolve",
@@ -296,8 +357,9 @@ async function startServer() {
     } catch (err: any) {
       const duration = Date.now() - startTime;
       const errorCode = (err.code || "INTERNAL_ERROR") as ErrorCode;
+      const statusCode = err.status || 500;
       
-      logger.error({
+      const logPayload = {
         requestId,
         timestamp: new Date().toISOString(),
         endpoint: "/api/resolve",
@@ -305,9 +367,15 @@ async function startServer() {
         success: false,
         errorCode,
         message: err.message || "Unknown error"
-      });
+      };
 
-      res.status(err.status || 500).json({
+      if (statusCode >= 500) {
+        logger.error(logPayload);
+      } else {
+        logger.warn(logPayload);
+      }
+
+      res.status(statusCode).json({
         success: false,
         error: {
           code: errorCode,
@@ -419,14 +487,19 @@ async function startServer() {
       }
 
       if (!finalResponse.ok) {
-        logger.error({
+        const logData = {
            requestId: "download-stream",
            timestamp: new Date().toISOString(),
            endpoint: "/api/download",
            success: false,
            errorCode: "UPSTREAM_ERROR",
            message: `Upstream responded with ${finalResponse.status} for URL: ${tokenData.url}`
-        });
+        };
+        if (finalResponse.status >= 500) {
+          logger.error(logData);
+        } else {
+          logger.warn(logData);
+        }
         releaseDownloadSlot();
         return res.status(finalResponse.status).send(`Failed to stream media: Upstream returned ${finalResponse.status}`);
       }
@@ -443,7 +516,7 @@ async function startServer() {
       const isAllowedType = allowedContentTypes.some(type => contentType.toLowerCase().includes(type));
       
       if (!isAllowedType || contentType.includes("text/html")) {
-        logger.error({
+        logger.warn({
            requestId: "download-stream",
            timestamp: new Date().toISOString(),
            endpoint: "/api/download",
@@ -544,6 +617,9 @@ async function startServer() {
     });
   }
 
+  // Start companion extractor if configured
+  startExtractorCompanion();
+
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
@@ -554,26 +630,16 @@ async function startServer() {
     if (isShuttingDown) return;
     isShuttingDown = true;
     console.log(`Received ${signal}. Gracefully shutting down HTTP server and background services...`);
+    cleanupExtractor();
 
     server.close(() => {
       console.log("HTTP server stopped accepting new connections.");
-      if (pythonProcess && !pythonProcess.killed) {
-        try {
-          pythonProcess.kill("SIGTERM");
-          console.log("Python extractor process terminated.");
-        } catch (err) {
-          console.error("Error stopping python process:", err);
-        }
-      }
       process.exit(0);
     });
 
     // Enforce hard timeout if active connections do not drain
     setTimeout(() => {
       console.error("Forced process exit after shutdown timeout.");
-      if (pythonProcess && !pythonProcess.killed) {
-        pythonProcess.kill("SIGKILL");
-      }
       process.exit(1);
     }, 10000).unref();
   };

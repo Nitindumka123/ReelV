@@ -1,6 +1,8 @@
 User-agent: *
 Allow: /
 Disallow: /api/
+Disallow: /api/download
+Disallow: /api/resolve
 Disallow: /health
 Disallow: /ready
 Sitemap: https://reelvault.app/sitemap.xml

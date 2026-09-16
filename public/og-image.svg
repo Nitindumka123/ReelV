@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <rect width="1200" height="630" fill="#070707"/>
+  <circle cx="600" cy="200" r="350" fill="#E5092F" fill-opacity="0.08" filter="blur(80px)"/>
+  
+  <rect x="520" y="140" width="160" height="160" rx="36" fill="#121212" stroke="#E5092F" stroke-width="4" stroke-opacity="0.4"/>
+  <circle cx="600" cy="220" r="48" stroke="#E5092F" stroke-width="6" stroke-dasharray="10 6"/>
+  <polygon points="590,200 620,220 590,240" fill="#E5092F"/>
+  
+  <text x="600" y="370" text-anchor="middle" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="64" font-weight="900" fill="#FFFFFF" letter-spacing="-2">
+    REEL<tspan fill="#E5092F">VAULT</tspan>
+  </text>
+  
+  <text x="600" y="430" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="28" font-weight="600" fill="#A7A7A7" letter-spacing="-0.5">
+    High-Quality Public Instagram Media Extraction
+  </text>
+  
+  <g transform="translate(450, 480)">
+    <rect width="300" height="48" rx="24" fill="#121212" stroke="rgba(255,255,255,0.1)" stroke-width="1.5"/>
+    <circle cx="28" cy="24" r="5" fill="#10B981"/>
+    <text x="44" y="30" font-family="'Inter', system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" letter-spacing="1.5">
+      FAST • PRIVATE • PUBLIC ONLY
+    </text>
+  </g>
+</svg>

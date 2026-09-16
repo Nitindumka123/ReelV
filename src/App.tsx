@@ -17,7 +17,7 @@ export default function App() {
   const [url, setUrl] = useState('');
   const [state, setState] = useState<DownloadState>('idle');
   const [media, setMedia] = useState<MediaMetadata | null>(null);
-  const [error, setError] = useState<ErrorCode | string | undefined>();
+  const [error, setError] = useState<ErrorCode | string | { code: string; message?: string } | undefined>();
 
   const handleSubmit = async () => {
     if (!url) return;
@@ -44,7 +44,10 @@ export default function App() {
       setMedia(result);
     } catch (err: any) {
       setState('error');
-      setError(err.code || 'INTERNAL_ERROR');
+      setError({
+        code: err.code || 'INTERNAL_ERROR',
+        message: err.message
+      });
     }
   };
 

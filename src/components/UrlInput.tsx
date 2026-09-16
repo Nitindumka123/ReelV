@@ -27,11 +27,13 @@ export const UrlInput = ({ value, onChange, onClear, onSubmit, disabled }: UrlIn
         </div>
         
         <input
+          id="instagram-url-input"
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Paste Instagram Reel, Story or Highlight link..."
+          aria-label="Instagram media URL"
           className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-secondary-text py-3 text-lg"
           disabled={disabled}
         />
@@ -43,6 +45,7 @@ export const UrlInput = ({ value, onChange, onClear, onSubmit, disabled }: UrlIn
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
               onClick={onClear}
+              aria-label="Clear URL input"
               className="p-2 text-secondary-text hover:text-white transition-colors"
             >
               <X size={20} />
@@ -51,8 +54,10 @@ export const UrlInput = ({ value, onChange, onClear, onSubmit, disabled }: UrlIn
         </AnimatePresence>
 
         <button
+          id="desktop-download-btn"
           onClick={onSubmit}
           disabled={disabled || !value}
+          aria-label="Download Instagram media"
           className="hidden sm:flex items-center gap-2 bg-primary-red hover:bg-bright-red disabled:bg-surface disabled:text-secondary-text disabled:border-border-subtle text-white px-6 py-3 rounded-lg font-bold transition-all ml-2 border border-transparent shadow-lg shadow-primary-red/20 active:scale-95"
         >
           <span>Download</span>
@@ -75,8 +80,10 @@ export const UrlInput = ({ value, onChange, onClear, onSubmit, disabled }: UrlIn
       
       {/* Mobile CTA */}
       <button
+        id="mobile-download-btn"
         onClick={onSubmit}
         disabled={disabled || !value}
+        aria-label="Download Instagram media"
         className="sm:hidden w-full mt-4 bg-primary-red hover:bg-bright-red disabled:bg-surface disabled:text-secondary-text text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-primary-red/20"
       >
         Download Now

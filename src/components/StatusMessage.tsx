@@ -5,12 +5,15 @@ import { DownloadState, ErrorCode } from '../types';
 
 interface StatusMessageProps {
   state: DownloadState;
-  error?: ErrorCode | string;
+  error?: ErrorCode | string | { code: string; message?: string };
   key?: React.Key;
 }
 
 export const StatusMessage = ({ state, error }: StatusMessageProps) => {
   if (state === 'idle') return null;
+
+  const errorCode = typeof error === 'object' ? error.code || '' : error || '';
+  const customMessage = typeof error === 'object' ? error.message : undefined;
 
   const getErrorMessage = (code: string) => {
     switch (code) {
@@ -22,19 +25,21 @@ export const StatusMessage = ({ state, error }: StatusMessageProps) => {
       case 'TIMEOUT': return { title: 'Request Timeout', desc: 'The processing took too long. Please try again.' };
       case 'PROVIDER_UNAVAILABLE': return { title: 'Provider Offline', desc: 'Our resolution service is temporarily unavailable.' };
       case 'PROVIDER_NOT_CONFIGURED': return { title: 'Service Not Configured', desc: 'The media provider credentials are not set.' };
-      case 'PROVIDER_AUTH_ERROR': return { title: 'Access Restricted', desc: 'Instagram blocked the request or requires login.' };
+      case 'PROVIDER_AUTH_ERROR': return { title: 'Access Restricted', desc: customMessage || 'Instagram requires authentication or blocked the automated request.' };
       case 'PROVIDER_RATE_LIMITED': return { title: 'Provider Rate Limited', desc: 'The provider has reached its capacity. Please try again later.' };
-      default: return { title: 'Processing Error', desc: 'An unexpected error occurred during processing.' };
+      default: return { title: 'Processing Error', desc: customMessage || 'An unexpected error occurred during processing.' };
     }
   };
 
-  const errorDetails = state === 'error' && error ? getErrorMessage(error) : null;
+  const errorDetails = state === 'error' && errorCode ? getErrorMessage(errorCode) : null;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
+      role="status"
+      aria-live="polite"
       className="mt-8 flex justify-center"
     >
       {state === 'validating' && (
@@ -53,10 +58,10 @@ export const StatusMessage = ({ state, error }: StatusMessageProps) => {
 
       {state === 'error' && errorDetails && (
         <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 px-6 py-4 rounded-xl">
-          {error === 'PRIVATE_CONTENT' ? (
-            <ShieldAlert className="w-5 h-5 text-red-500" />
+          {errorCode === 'PRIVATE_CONTENT' ? (
+            <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
           ) : (
-            <AlertCircle className="w-5 h-5 text-red-500" />
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
           )}
           <div className="flex flex-col text-left">
             <span className="text-sm font-bold text-red-500">{errorDetails.title}</span>
